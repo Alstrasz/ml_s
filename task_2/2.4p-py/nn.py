@@ -21,9 +21,10 @@ def softmax(x):
         Матрица numpy вещественных чисел, содержащая результаты вычисления софтмакса размерности batch_size x number_of_classes
     """
     # *** НАЧАЛО ВАШЕГО КОДА ***
-    max_arr = np.max(x, axis=0)
-    denom = np.log(np.sum(np.exp(x - max_arr), axis=0)) + max_arr
-    return np.exp(x - denom)
+    x_max = np.atleast_2d(np.max(x, axis=1)).T
+    x_sub = x - x_max
+    x_log = np.atleast_2d(np.log(np.sum(np.exp(x_sub), axis=1))).T
+    return np.exp(x_sub - x_log)
     # *** КОНЕЦ ВАШЕГО КОДА ***
 
 
@@ -38,12 +39,16 @@ def sigmoid(x):
         Массив numpy вещественных чисел, содержащих значения функции
     """
     # *** НАЧАЛО ВАШЕГО КОДА ***
-    return 1 / (1 - np.exp(-x))
+    return 1 / (1 + np.exp(-x))
     # *** КОНЕЦ ВАШЕГО КОДА ***
 
 
 def ce(y, y1):
     return -np.sum(y * np.ma.log(y1))
+
+
+def sigmoid_diff(x):
+    return sigmoid(x) * (1 - sigmoid(x))
 
 
 def get_initial_params(input_size, num_hidden, num_output) -> dict:
@@ -103,10 +108,11 @@ def forward_prop(data, labels, params):
     """
     # *** НАЧАЛО ВАШЕГО КОДА ***
     w1, b1, w2, b2 = params['W1'], params['b1'], params['W2'], params['b2']
-    hidden = sigmoid(data @ w1 + b1)
-    output = softmax(hidden @ w2 + b2)
+    m, _ = data.shape
+    hidden = sigmoid(data.dot(w1) + b1)
+    output = softmax(hidden.dot(w2) + b2)
     ce_sum = np.sum(ce(labels, output))
-    cost = ce_sum / labels.size
+    cost = ce_sum / m
     return hidden, output, cost
     # *** КОНЕЦ ВАШЕГО КОДА ***
 
@@ -130,6 +136,20 @@ def backward_prop(data, labels, params, forward_prop_func):
             W1, W2, b1 и b2
     """
     # *** НАЧАЛО ВАШЕГО КОДА ***
+    w1, b1, w2, b2 = params['W1'], params['b1'], params['W2'], params['b2']
+    hidden, output, _ = forward_prop_func(data, labels, params)
+    sigma_k = output - labels
+    dw2 = hidden.T.dot(sigma_k)
+    db2 = np.sum(sigma_k, axis=0)
+    sigma_j = sigma_k.dot(w2.T) * sigmoid_diff(hidden)
+    dw1 = data.T.dot(sigma_j)
+    db1 = np.sum(sigma_j, axis=0)
+    return {
+        'W1': dw1,
+        'b1': db1,
+        'W2': dw2,
+        'b2': db2
+    }
     # *** КОНЕЦ ВАШЕГО КОДА ***
 
 
@@ -153,6 +173,21 @@ def backward_prop_regularized(data, labels, params, forward_prop_func, reg):
             W1, W2, b1 и b2
     """
     # *** НАЧАЛО ВАШЕГО КОДА ***
+    w1, b1, w2, b2 = params['W1'], params['b1'], params['W2'], params['b2']
+    m, _ = data.shape
+    hidden, output, _ = forward_prop_func(data, labels, params)
+    sigma_k = output - labels
+    dw2 = hidden.T.dot(sigma_k) + (reg / m) * w2
+    db2 = np.sum(sigma_k, axis=0)
+    sigma_j = sigma_k.dot(w2.T) * sigmoid_diff(hidden)
+    dw1 = data.T.dot(sigma_j) + (reg / m) * w1
+    db1 = np.sum(sigma_j, axis=0)
+    return {
+        'W1': dw1,
+        'b1': db1,
+        'W2': dw2,
+        'b2': db2
+    }
     # *** КОНЕЦ ВАШЕГО КОДА ***
 
 def gradient_descent_epoch(train_data, train_labels, learning_rate, batch_size, params, forward_prop_func, backward_prop_func):
@@ -174,6 +209,21 @@ def gradient_descent_epoch(train_data, train_labels, learning_rate, batch_size, 
     """
 
     # *** НАЧАЛО ВАШЕГО КОДА ***
+    print('Epoch started')
+    w1, b1, w2, b2 = params['W1'], params['b1'], params['W2'], params['b2']
+    m, _ = train_data.shape
+    for batch_index in range(m // batch_size):
+        batch_start = batch_index * batch_size
+        batch_end = (batch_index + 1) * batch_size
+        data = train_data[batch_start:batch_end]
+        labels = train_labels[batch_start:batch_end]
+        error_corrections = backward_prop_func(data, labels, params, forward_prop_func)
+        dw1, db1, dw2, db2 = error_corrections['W1'], error_corrections['b1'], \
+                             error_corrections['W2'], error_corrections['b2']
+        w1 -= learning_rate / batch_size * dw1
+        b1 -= learning_rate / batch_size * db1
+        w2 -= learning_rate / batch_size * dw2
+        b2 -= learning_rate / batch_size * db2
     # *** КОНЕЦ ВАШЕГО КОДА ***
 
     # Функция ничего не возвращает
